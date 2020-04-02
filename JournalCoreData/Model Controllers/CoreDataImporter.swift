@@ -17,18 +17,36 @@ class CoreDataImporter {
     func sync(entries: [EntryRepresentation], completion: @escaping (Error?) -> Void = { _ in }) {
         
         self.context.perform {
-            for entryRep in entries {
-                guard let identifier = entryRep.identifier else { continue }
+     
+            let identifiers = entries.compactMap {$0.identifier}
+
+            let entriesArr = self.fetchSingleEntryFromPersistentStore(with: identifiers, in: self.context)
+            
+            guard let returnEntries = entriesArr else {return}
+            
+            var entriesDic: [String:Entry] = [:]
+            
+            for entry in returnEntries {
+                guard let indetifier = entry.identifier else {continue}
+                entriesDic[indetifier] = entry
+            }
+            
+            for entryRep in entries{
                 
-                let entry = self.fetchSingleEntryFromPersistentStore(with: identifier, in: self.context)
-                if let entry = entry, entry != entryRep {
-                    self.update(entry: entry, with: entryRep)
-                } else if entry == nil {
+                guard let indetifier = entryRep.identifier else {continue}
+                
+                if let entry = entriesDic[indetifier]{
+                    if entry != entryRep {
+                        self.update(entry: entry, with: entryRep)
+                    }
+                    
+                } else {
                     _ = Entry(entryRepresentation: entryRep, context: self.context)
                 }
             }
-            completion(nil)
         }
+        completion(nil)
+ 
     }
     
     private func update(entry: Entry, with entryRep: EntryRepresentation) {
@@ -39,16 +57,16 @@ class CoreDataImporter {
         entry.identifier = entryRep.identifier
     }
     
-    private func fetchSingleEntryFromPersistentStore(with identifier: String?, in context: NSManagedObjectContext) -> Entry? {
+    private func fetchSingleEntryFromPersistentStore(with identifier: [String]?, in context: NSManagedObjectContext) -> [Entry]? {
         
         guard let identifier = identifier else { return nil }
         
         let fetchRequest: NSFetchRequest<Entry> = Entry.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "identifier == %@", identifier)
+        fetchRequest.predicate = NSPredicate(format: "identifier IN %@", identifier)
         
-        var result: Entry? = nil
+        var result: [Entry]? = nil
         do {
-            result = try context.fetch(fetchRequest).first
+            result = try context.fetch(fetchRequest)
         } catch {
             NSLog("Error fetching single entry: \(error)")
         }
